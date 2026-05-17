@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://mathbossflashcards.com/sitemap.xml
+Sitemap: https://freemathflashcards.com/sitemap.xml
