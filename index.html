@@ -54,7 +54,35 @@
         
         .table-selector-box { display: none; border: 2px dashed var(--secondary); font-size: 20px; }
         .table-selector-box.visible { display: block; }
-        input { width: 70px; padding: 8px; font-size: 20px; text-align: center; border-radius: 8px; border: 2px solid var(--secondary); }
+        input[type="number"] { width: 70px; padding: 8px; font-size: 20px; text-align: center; border-radius: 8px; border: 2px solid var(--secondary); }
+        
+        .order-container { display: inline-flex; align-items: center; gap: 8px; margin-left: 15px; font-size: 18px; cursor: pointer; user-select: none; }
+        .order-container input[type="checkbox"] { 
+            appearance: none;
+            -webkit-appearance: none;
+            width: 22px; 
+            height: 22px; 
+            cursor: pointer; 
+            border: 2px solid var(--primary);
+            border-radius: 4px;
+            background-color: white;
+            display: inline-grid;
+            place-content: center;
+            margin: 0;
+            position: relative;
+        }
+        .order-container input[type="checkbox"]::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            transform: scale(0);
+            transition: 120ms transform ease-in-out;
+            background-color: var(--primary);
+            clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        }
+        .order-container input[type="checkbox"]:checked::before {
+            transform: scale(1);
+        }
 
         .mode-selector { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 15px; }
         .mode-btn { padding: 10px 15px; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; background: white; color: var(--primary); border: 2px solid var(--secondary); min-width: 45px; }
@@ -65,6 +93,7 @@
         .card.flipped { transform: rotateY(180deg); }
         .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 25px; border: 5px solid var(--primary); box-shadow: 0 10px 20px rgba(0,0,0,0.1); padding: 15px; box-sizing: border-box; overflow: hidden; background: white; }
         .card-front { font-size: 38px; font-weight: bold; color: #2d3436; text-align: center; line-height: 1.2; }
+        .word-problem-text { font-size: 22px !important; }
         .card-back { background: var(--primary); color: white; transform: rotateY(180deg); text-align: center; }
         
         #result-text { font-size: 22px; margin-bottom: 5px; }
@@ -122,7 +151,10 @@
     </div>
 
     <div id="table-box" class="table-selector-box bar-style">
-        Table: <input type="number" id="tableNum" value="7" min="1" max="999" oninput="if(value.length>3)value=value.slice(0,3)" onchange="newQuestion()">
+        Table: <input type="number" id="tableNum" value="2" min="1" max="999" oninput="if(value.length>3)value=value.slice(0,3)" onchange="resetSequence(); newQuestion();">
+        <label class="order-container">
+            <input type="checkbox" id="inOrderCheck" checked onchange="resetSequence(); newQuestion();"> In Order
+        </label>
     </div>
     
     <div class="stats-bar bar-style">
@@ -220,9 +252,20 @@
     const earnedRewards = new Set();
     const mistakes = [];
     let previousShape = "";
+    let currentSequenceIndex = 0;
 
     const fractionLib = { denoms: [2, 3, 4, 5, 6, 8, 10, 12], rookie: [2, 3, 4], boss: [6, 8, 10, 12] };
     const colorLib = ['#fdcb6e', '#00cec9', '#0984e3', '#e84393', '#fab1a0', '#55efc4', '#a29bfe', '#ff7675'];
+
+    // Load score from storage on page load
+    if (localStorage.getItem('flashcard_score')) {
+        score = parseInt(localStorage.getItem('flashcard_score')) || 0;
+        document.getElementById('score').innerText = score;
+        // Regenerate trophy items up to the loaded score
+        for (let i = 10; i <= score; i += 10) {
+            triggerRewards(i, true); // true skips launching another animation blast
+        }
+    }
 
     function togglePage(id) {
         const page = document.getElementById(id);
@@ -244,14 +287,16 @@
         difficulty = val;
         document.querySelectorAll('.difficulty-selector .diff-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        resetSequence();
         newQuestion();
     }
 
     function setTableMode(val) {
         isSingleTable = val;
-        document.getElementById('table-box').classList.toggle('visible', val);
+        document.getElementById('table-box').style.display = val ? 'block' : 'none';
         document.getElementById('btn-rand').classList.toggle('active', !val);
         document.getElementById('btn-single').classList.toggle('active', val);
+        resetSequence();
         newQuestion();
     }
 
@@ -260,19 +305,33 @@
         document.querySelectorAll('.mode-selector .mode-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
 
-        // SINGLE TABLE BUTTON LOGIC: Hide if mode is words, fractions, numberline, or dots
         const hideTables = ['word', 'fractions', 'numberline', 'groups'].includes(type);
+        
+        if (hideTables) {
+            isSingleTable = false;
+            document.getElementById('btn-rand').classList.add('active');
+            document.getElementById('btn-single').classList.remove('active');
+            document.getElementById('inOrderCheck').checked = true; // default back to checked
+        }
+
         document.getElementById('table-controls').style.display = hideTables ? 'none' : 'block';
         document.getElementById('table-box').style.display = (hideTables || !isSingleTable) ? 'none' : 'block';
         
+        resetSequence();
         newQuestion();
+    }
+
+    function resetSequence() {
+        currentSequenceIndex = 0;
     }
 
     function resetGame() {
         score = 0; mistakes.length = 0; earnedRewards.clear();
+        localStorage.removeItem('flashcard_score');
         document.getElementById('score').innerText = '0';
         document.getElementById('trophyRow').innerHTML = '';
         document.getElementById('winPage').style.display = 'none';
+        resetSequence();
         newQuestion();
     }
 
@@ -287,8 +346,9 @@
     }
 
     function adjustFontSize(element) {
-        let fontSize = 38; element.style.fontSize = fontSize + "px";
-        while ((element.scrollHeight > element.offsetHeight || element.scrollWidth > element.offsetWidth) && fontSize > 16) {
+        let baseSize = element.classList.contains('word-problem-text') ? 22 : 38;
+        let fontSize = baseSize; element.style.fontSize = fontSize + "px";
+        while ((element.scrollHeight > element.offsetHeight || element.scrollWidth > element.offsetWidth) && fontSize > 14) {
             fontSize--; element.style.fontSize = fontSize + "px";
         }
     }
@@ -298,6 +358,7 @@
         const qArea = document.getElementById('question');
         const aArea = document.getElementById('answer-display');
         qArea.innerHTML = ""; qArea.innerText = ""; qArea.style.fontSize = "38px";
+        qArea.classList.remove('word-problem-text');
         const grid = document.getElementById('options');
         grid.style.gridTemplateColumns = '1fr 1fr';
 
@@ -322,22 +383,36 @@
             let g = Math.floor(Math.random() * (maxG - 1)) + 2;
             let d = Math.floor(Math.random() * (maxD - 1)) + 2;
             correctAnswer = `${g} × ${d} = ${g * d}`;
-            // UPDATED TEXT FOR DOTS GAME
             qArea.innerHTML = `<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:5px;">${Array(g).fill(0).map(() => generateGroupSVG(d, 0.6)).join('')}</div><div style="font-size:22px;font-weight:bold;margin-top:10px;">Which equation does this represent?</div>`;
             aArea.innerText = correctAnswer; genGroupOptions(correctAnswer);
         } else {
             let min = 1, max = 12;
             if(difficulty === 'rookie') { min = 1; max = 5; }
             else if(difficulty === 'boss') { min = 13; max = 20; }
-            let n1 = isSingleTable ? (parseInt(document.getElementById('tableNum').value) || 7) : Math.floor(Math.random() * (max - min + 1)) + min;
-            let n2 = Math.floor(Math.random() * (max - min + 1)) + min;
-            let op = mathType;
-            if (mathType === 'word') op = ['addition','subtraction','multiplication','division'][Math.floor(Math.random()*4)];
             
-            if (op === 'multiplication') { correctAnswer = n1 * n2; currentQText = mathType==='word' ? `There are ${n1} boxes with ${n2} items. Total?` : `${n1} × ${n2}`; }
-            else if (op === 'addition') { correctAnswer = n1 + n2; currentQText = mathType==='word' ? `You have ${n1} apples and get ${n2} more. Total?` : `${n1} + ${n2}`; }
-            else if (op === 'subtraction') { let big = n1 + n2; correctAnswer = n2; currentQText = mathType==='word' ? `A baker made ${big} cakes and sold ${n1}. Left?` : `${big} − ${n1}`; }
-            else { let prod = n1 * n2; correctAnswer = n2; currentQText = mathType==='word' ? `Split ${prod} candies among ${n1} friends. Each?` : `${prod} ÷ ${n1}`; }
+            let n1 = isSingleTable ? (parseInt(document.getElementById('tableNum').value) || 2) : Math.floor(Math.random() * (max - min + 1)) + min;
+            let n2 = 1;
+
+            if (isSingleTable && document.getElementById('inOrderCheck').checked) {
+                if (currentSequenceIndex < min || currentSequenceIndex > max) {
+                    currentSequenceIndex = min;
+                }
+                n2 = currentSequenceIndex;
+                currentSequenceIndex++;
+            } else {
+                n2 = Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+            let op = mathType;
+            if (mathType === 'word') {
+                op = ['addition','subtraction','multiplication','division'][Math.floor(Math.random()*4)];
+                qArea.classList.add('word-problem-text');
+            }
+            
+            if (op === 'multiplication') { correctAnswer = n1 * n2; currentQText = mathType==='word' ? `There are ${n1} boxes with ${n2} items. What is the total?` : `${n1} × ${n2}`; }
+            else if (op === 'addition') { correctAnswer = n1 + n2; currentQText = mathType==='word' ? `You have ${n1} apples and get ${n2} more. How many do you have in total?` : `${n1} + ${n2}`; }
+            else if (op === 'subtraction') { let big = n1 + n2; correctAnswer = n2; currentQText = mathType==='word' ? `A baker made ${big} cakes and sold ${n1}. How many are left?` : `${big} − ${n1}`; }
+            else { let prod = n1 * n2; correctAnswer = n2; currentQText = mathType==='word' ? `Split ${prod} candies among ${n1} friends. How many does each person get?` : `${prod} ÷ ${n1}`; }
             
             qArea.innerText = currentQText; adjustFontSize(qArea);
             aArea.innerText = correctAnswer; generateOptions(correctAnswer);
@@ -425,7 +500,10 @@
         const resLabel = document.getElementById('result-text');
         if (isCorr) {
             btn.classList.add('correct'); resLabel.innerHTML = "🌟 AWESOME!";
-            score++; document.getElementById('score').innerText = score; triggerRewards(score);
+            score++; 
+            document.getElementById('score').innerText = score; 
+            localStorage.setItem('flashcard_score', score); // save score state
+            triggerRewards(score);
         } else {
             btn.classList.add('wrong'); resLabel.innerHTML = "Keep trying! It's:";
             mistakes.push({q: mathType==='groups'?correctAnswer:currentQText});
@@ -435,9 +513,19 @@
         else setTimeout(newQuestion, 2000);
     }
 
-    function triggerRewards(s) {
+    function triggerRewards(s, quietMode = false) {
         const r = {10:'🍦', 20:'🍌', 30:'🍪', 40:'🍒', 50:'🚀', 60:'✨', 70:'🦄', 80:'🍕', 90:'👻', 100:'💯'};
-        if (r[s]) { launchRain(r[s], s === 100 ? 80 : 40); if(!earnedRewards.has(r[s])) { earnedRewards.add(r[s]); const row = document.getElementById('trophyRow'); const span = document.createElement('span'); span.className = 'trophy'; span.innerText = r[s]; row.appendChild(span); } }
+        if (r[s]) { 
+            if (!quietMode) launchRain(r[s], s === 100 ? 80 : 40); 
+            if(!earnedRewards.has(r[s])) { 
+                earnedRewards.add(r[s]); 
+                const row = document.getElementById('trophyRow'); 
+                const span = document.createElement('span'); 
+                span.className = 'trophy'; 
+                span.innerText = r[s]; 
+                row.appendChild(span); 
+            } 
+        }
     }
 
     function launchRain(emoji, count) {
